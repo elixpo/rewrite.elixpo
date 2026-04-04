@@ -279,15 +279,15 @@ def _generate_report(text, output_path, use_llm=True, model=None, file_path=None
 
 
 def cmd_process(args):
-    """Full pipeline: detect → log → paraphrase per section → re-score → report."""
+    """Full pipeline: detect → paraphrase per section → re-score → output to out/ folder."""
     from app.document.parser import parse_file
     from app.document.structure import Document
     from app.document.report import generate_report
+    from app.document.tex_writer import rewrite_tex
     from app.paraphrase.prompts import build_messages
     from app.paraphrase.postprocess import postprocess
     from app.core.llm import chat
-    from app.core.config import PARAPHRASE_INTENSITIES
-    import time
+    import os
 
     file_path = getattr(args, "file", None)
     text = read_input(args.text, file_path)
@@ -297,8 +297,8 @@ def cmd_process(args):
 
     model = getattr(args, "model", DEFAULT_MODEL)
     domain = getattr(args, "domain", "general")
-    threshold = 35  # rewrite sections scoring above this
-    max_retries = 3
+    threshold = 20  # target: below 20%
+    max_attempts = 5
 
     # Parse document structure
     if file_path:
@@ -307,6 +307,11 @@ def cmd_process(args):
         doc = Document.from_text(text)
 
     paragraphs = doc.paragraphs
+
+    # Setup output directory
+    out_dir = os.path.join(os.path.dirname(file_path) if file_path else ".", "out")
+    os.makedirs(out_dir, exist_ok=True)
+    base_name = os.path.splitext(os.path.basename(file_path))[0] if file_path else "document"
 
     # =====================================================================
     # PHASE 1: DETECTION
@@ -323,9 +328,9 @@ def cmd_process(args):
 
         scores.append(result)
         sc = result["score"]
-        sc_color = score_color(sc)
         status = c("FLAGGED", "red") if sc > threshold else c("OK", "green")
-        print(f"  [{i+1:>2}/{len(paragraphs)}] {c(f'{sc:5.1f}%', sc_color)}  {status}  {c(para.text[:65] + '...', 'dim') if len(para.text) > 65 else c(para.text, 'dim')}")
+        preview = para.text[:65] + "..." if len(para.text) > 65 else para.text
+        print(f"  [{i+1:>2}/{len(paragraphs)}] {c(f'{sc:5.1f}%', score_color(sc))}  {status}  {c(preview, 'dim')}")
 
     flagged = [(i, s) for i, s in enumerate(scores) if s["score"] > threshold]
     overall_before = detect_heuristic_only(text)
@@ -335,24 +340,47 @@ def cmd_process(args):
     print(f"  Overall score: {c(f'{before_score}%', score_color(before_score))}")
     print(f"  Flagged: {c(str(len(flagged)), 'red' if flagged else 'green')} / {len(paragraphs)} paragraphs above {threshold}%")
 
+    # Generate original report
+    orig_report = os.path.join(out_dir, f"{base_name}_original_report.pdf")
+    print(f"\n  {c('Generating original report...', 'dim')}", end=" ", flush=True)
+    orig_seg_scores = []
+    for i, para in enumerate(paragraphs):
+        orig_seg_scores.append({
+            "score": scores[i]["score"],
+            "verdict": scores[i]["verdict"],
+            "text": para.text,
+        })
+    generate_report(
+        document=doc,
+        segment_scores=orig_seg_scores,
+        overall_score=overall_before["score"],
+        overall_verdict=overall_before["verdict"],
+        features=overall_before.get("features", {}),
+        output_path=orig_report,
+    )
+    print(c(f"Saved to {orig_report}", "green"))
+
     if not flagged:
         print(f"\n  {c('No paragraphs need rewriting. Document looks human-written.', 'green')}")
         return
 
     # =====================================================================
-    # PHASE 2: PARAPHRASING
+    # PHASE 2: PARAPHRASING (aggressive, target <20%)
     # =====================================================================
     print_header("PHASE 2: PARAPHRASING")
-    print(f"  {c(f'Rewriting {len(flagged)} flagged paragraphs via {model}...', 'dim')}\n")
+    print(f"  {c(f'Target: <{threshold}%  |  Max attempts: {max_attempts}  |  Model: {model}', 'dim')}")
+    print(f"  {c(f'Rewriting {len(flagged)} flagged paragraphs...', 'dim')}\n")
 
     rewritten_paragraphs = [p.text for p in paragraphs]
-    intensities = ["light", "medium", "aggressive"]
+
+    # Escalating intensity: start at medium, go aggressive fast
+    intensity_schedule = ["medium", "aggressive", "aggressive", "aggressive", "aggressive"]
+    temp_schedule = [0.95, 1.1, 1.25, 1.4, 1.5]
 
     for step, (para_idx, score_info) in enumerate(flagged):
         para_text = paragraphs[para_idx].text
         original_score = score_info["score"]
         section_name = ""
-        # Find which section this paragraph belongs to
         count = 0
         for section in doc.sections:
             for p in section.paragraphs:
@@ -361,7 +389,8 @@ def cmd_process(args):
                 count += 1
 
         print(f"  {c(f'[{step+1}/{len(flagged)}]', 'bold')} Section: {c(section_name, 'cyan')}  |  Score: {c(f'{original_score:.0f}%', score_color(original_score))}")
-        print(f"    {c(para_text[:80] + '...', 'dim')}")
+        preview = para_text[:80] + "..." if len(para_text) > 80 else para_text
+        print(f"    {c(preview, 'dim')}")
 
         # Build context from surrounding paragraphs
         context_parts = []
@@ -373,15 +402,37 @@ def cmd_process(args):
 
         best_text = para_text
         best_score = original_score
+        current_input = para_text
 
-        for attempt in range(max_retries):
-            intensity = intensities[min(attempt, len(intensities) - 1)]
-            temp = PARAPHRASE_INTENSITIES.get(intensity, 1.0) + attempt * 0.15
+        for attempt in range(max_attempts):
+            intensity = intensity_schedule[min(attempt, len(intensity_schedule) - 1)]
+            temp = temp_schedule[min(attempt, len(temp_schedule) - 1)]
 
-            print(f"    Attempt {attempt+1}/{max_retries} ({c(intensity, 'cyan')}, temp={temp:.2f})...", end=" ", flush=True)
+            print(f"    Attempt {attempt+1}/{max_attempts} ({c(intensity, 'cyan')}, temp={temp:.2f})...", end=" ", flush=True)
 
             try:
-                messages = build_messages(best_text, intensity=intensity, domain=domain, context=context)
+                # On later attempts, feed back what the detector caught
+                feedback = ""
+                if attempt >= 2 and best_score > threshold:
+                    best_result = detect_heuristic_only(best_text)
+                    high_features = sorted(
+                        best_result["features"].items(),
+                        key=lambda x: x[1], reverse=True,
+                    )[:3]
+                    issues = ", ".join(f"{k}: {v:.0f}%" for k, v in high_features)
+                    feedback = (
+                        f"\n\nThe previous rewrite still scores high on: {issues}. "
+                        "Fix these specific issues. Vary sentence lengths MORE dramatically. "
+                        "Use shorter sentences. Break patterns. Be less formal."
+                    )
+
+                messages = build_messages(
+                    current_input, intensity=intensity,
+                    domain=domain, context=context,
+                )
+                if feedback:
+                    messages[-1]["content"] += feedback
+
                 rewritten = chat(messages=messages, model=model, temperature=temp, seed=-1)
                 rewritten = postprocess(rewritten)
 
@@ -391,37 +442,36 @@ def cmd_process(args):
                 if new_score < best_score:
                     best_text = rewritten
                     best_score = new_score
+                    current_input = rewritten  # feed improved version forward
 
-                arrow = c("↓", "green") if new_score < original_score else c("↑", "red")
+                arrow = c("\u2193", "green") if new_score < original_score else c("\u2191", "red")
                 print(f"{c(f'{new_score:.1f}%', score_color(new_score))} {arrow}")
 
                 if best_score <= threshold:
-                    print(f"    {c('✓ Below threshold — moving on', 'green')}")
+                    print(f"    {c('Below threshold — moving on', 'green')}")
                     break
             except Exception as e:
                 print(f"{c(f'FAILED: {e}', 'red')}")
                 break
 
         if best_score > threshold:
-            print(f"    {c(f'! Still above threshold ({best_score:.0f}%) — needs manual review', 'yellow')}")
+            print(f"    {c(f'Still at {best_score:.0f}% — needs manual review', 'yellow')}")
 
         rewritten_paragraphs[para_idx] = best_text
         print()
 
     # =====================================================================
-    # PHASE 3: RESULTS
+    # PHASE 3: OUTPUT
     # =====================================================================
-    print_header("PHASE 3: RESULTS")
+    print_header("PHASE 3: OUTPUT")
 
-    # Reassemble document
+    # Reassemble and score
     final_text = "\n\n".join(rewritten_paragraphs)
-
-    # Score final text
     overall_after = detect_heuristic_only(final_text)
 
     before_sc = overall_before["score"]
     after_sc = overall_after["score"]
-    print(f"\n  Overall: {c(f'{before_sc:.1f}%', score_color(before_sc))} → {c(f'{after_sc:.1f}%', score_color(after_sc))}")
+    print(f"\n  Overall: {c(f'{before_sc:.1f}%', score_color(before_sc))} -> {c(f'{after_sc:.1f}%', score_color(after_sc))}")
     print(f"  Verdict: {c(overall_after['verdict'], score_color(after_sc))}")
 
     # Per-paragraph comparison
@@ -432,55 +482,69 @@ def cmd_process(args):
         if len(rewritten_paragraphs[i].strip()) < 30:
             new_sc = 0.0
         else:
-            new_result = detect_heuristic_only(rewritten_paragraphs[i])
-            new_sc = new_result["score"]
+            new_r = detect_heuristic_only(rewritten_paragraphs[i])
+            new_sc = new_r["score"]
 
         changed = rewritten_paragraphs[i] != para.text
         marker = "  "
         if changed:
             if new_sc <= threshold:
-                marker = c("✓ ", "green")
+                marker = c("  ", "green")
             else:
                 marker = c("! ", "yellow")
                 needs_review.append(i + 1)
-        print(f"  {marker}[{i+1:>2}] {c(f'{old_sc:5.1f}%', score_color(old_sc))} → {c(f'{new_sc:5.1f}%', score_color(new_sc))}")
+        print(f"  {marker}[{i+1:>2}] {c(f'{old_sc:5.1f}%', score_color(old_sc))} -> {c(f'{new_sc:5.1f}%', score_color(new_sc))}")
 
     if needs_review:
         print(f"\n  {c(f'Paragraphs needing manual review: {needs_review}', 'yellow')}")
 
-    # Save rewritten text
-    output = getattr(args, "output", None)
-    if output:
-        with open(output, "w", encoding="utf-8") as f:
+    # --- Save outputs to out/ folder ---
+    print(f"\n  {c('Saving to ' + out_dir + '/', 'bold')}")
+
+    # 1. Rewritten .tex file (if input was .tex)
+    if file_path and file_path.endswith(".tex"):
+        with open(file_path, "r", encoding="utf-8") as f:
+            original_tex = f.read()
+
+        original_para_texts = [p.text for p in paragraphs]
+        rewritten_tex = rewrite_tex(original_tex, original_para_texts, rewritten_paragraphs)
+
+        tex_out = os.path.join(out_dir, f"{base_name}_rewritten.tex")
+        with open(tex_out, "w", encoding="utf-8") as f:
+            f.write(rewritten_tex)
+        print(f"  {c('Rewritten .tex  ->  ' + tex_out, 'green')}")
+    else:
+        # Plain text output
+        txt_out = os.path.join(out_dir, f"{base_name}_rewritten.txt")
+        with open(txt_out, "w", encoding="utf-8") as f:
             f.write(final_text)
-        print(f"\n  {c(f'Rewritten text saved to {output}', 'green')}")
+        print(f"  {c('Rewritten text  ->  ' + txt_out, 'green')}")
 
-    # Generate report
-    report_path = getattr(args, "report", None)
-    if report_path:
-        # Build segment scores for report
-        seg_scores = []
-        for i, para_text in enumerate(rewritten_paragraphs):
-            if len(para_text.strip()) < 30:
-                seg_scores.append({"score": 0, "verdict": "Too short", "text": para_text})
-            else:
-                r = detect_heuristic_only(para_text)
-                seg_scores.append({"score": r["score"], "verdict": r["verdict"], "text": para_text})
+    # 2. Rewritten report PDF
+    rewritten_report = os.path.join(out_dir, f"{base_name}_rewritten_report.pdf")
+    rewritten_seg_scores = []
+    for i, para_text in enumerate(rewritten_paragraphs):
+        if len(para_text.strip()) < 30:
+            rewritten_seg_scores.append({"score": 0, "verdict": "Too short", "text": para_text})
+        else:
+            r = detect_heuristic_only(para_text)
+            rewritten_seg_scores.append({"score": r["score"], "verdict": r["verdict"], "text": para_text})
 
-        # Update document with rewritten paragraphs
-        rewritten_doc = Document.from_text(final_text, title=doc.title)
+    rewritten_doc = Document.from_text(final_text, title=doc.title + " (Rewritten)" if doc.title else "Rewritten")
+    generate_report(
+        document=rewritten_doc,
+        segment_scores=rewritten_seg_scores,
+        overall_score=overall_after["score"],
+        overall_verdict=overall_after["verdict"],
+        features=overall_after.get("features", {}),
+        output_path=rewritten_report,
+    )
+    print(f"  {c('Rewritten report ->  ' + rewritten_report, 'green')}")
 
-        generate_report(
-            document=rewritten_doc,
-            segment_scores=seg_scores,
-            overall_score=overall_after["score"],
-            overall_verdict=overall_after["verdict"],
-            features=overall_after.get("features", {}),
-            output_path=report_path,
-        )
-        print(f"  {c(f'Report saved to {report_path}', 'green')}")
+    # 3. Original report already saved above
+    print(f"  {c('Original report  ->  ' + orig_report, 'green')}")
 
-    print()
+    print(f"\n  {c('Done.', 'bold')}\n")
 
 
 def cmd_interactive(args):
@@ -570,13 +634,11 @@ def main():
     p_para.set_defaults(func=cmd_paraphrase)
 
     # process (full pipeline)
-    p_proc = sub.add_parser("process", help="Full pipeline: detect → paraphrase → report")
+    p_proc = sub.add_parser("process", help="Full pipeline: detect → paraphrase → report (outputs to out/)")
     p_proc.add_argument("text", nargs="?", help="Text to process")
     p_proc.add_argument("-f", "--file", help="Path to PDF, DOCX, .tex, or TXT file")
     p_proc.add_argument("-m", "--model", default=DEFAULT_MODEL, help="Pollinations model ID")
     p_proc.add_argument("-d", "--domain", choices=["general", "cs", "medicine", "law", "humanities"], default="general")
-    p_proc.add_argument("-o", "--output", help="Save rewritten text to file")
-    p_proc.add_argument("--report", help="Generate PDF report at this path")
     p_proc.set_defaults(func=cmd_process)
 
     # interactive

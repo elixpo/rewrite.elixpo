@@ -13,7 +13,7 @@ load_dotenv(_env_path)
 # --- API ---
 POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
 POLLINATIONS_BASE_URL = "https://gen.pollinations.ai/v1"
-DEFAULT_MODEL = "kimi"
+DEFAULT_MODEL = "gemini-fast"
 
 # --- LLM ---
 LLM_TIMEOUT = 60
