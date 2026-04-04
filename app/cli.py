@@ -285,7 +285,7 @@ def cmd_process(args):
     from app.document.report import generate_report
     from app.document.tex_writer import rewrite_tex
     from app.paraphrase.prompts import build_messages
-    from app.paraphrase.postprocess import postprocess, global_postprocess
+    from app.paraphrase.postprocess import postprocess, global_postprocess, normalize_length
     from app.core.llm import chat
     import os
     import copy
@@ -412,30 +412,22 @@ def cmd_process(args):
             print(f"    Attempt {attempt+1}/{max_attempts} ({c(intensity, 'cyan')}, temp={temp:.2f})...", end=" ", flush=True)
 
             try:
-                # On later attempts, feed back what the detector caught
+                # On later attempts, build specific detection feedback
                 feedback = ""
-                if attempt >= 2 and best_score > threshold:
+                if attempt >= 1 and best_score > threshold:
+                    from app.paraphrase.prompts import build_detection_feedback
                     best_result = detect_heuristic_only(best_text)
-                    high_features = sorted(
-                        best_result["features"].items(),
-                        key=lambda x: x[1], reverse=True,
-                    )[:3]
-                    issues = ", ".join(f"{k}: {v:.0f}%" for k, v in high_features)
-                    feedback = (
-                        f"\n\nThe previous rewrite still scores high on: {issues}. "
-                        "Fix these specific issues. Vary sentence lengths MORE dramatically. "
-                        "Use shorter sentences. Break patterns. Be less formal."
-                    )
+                    feedback = build_detection_feedback(best_text, best_result["features"])
 
                 messages = build_messages(
                     current_input, intensity=intensity,
                     domain=domain, context=context,
+                    feedback=feedback,
                 )
-                if feedback:
-                    messages[-1]["content"] += feedback
 
                 rewritten = chat(messages=messages, model=model, temperature=temp, seed=-1)
                 rewritten = postprocess(rewritten)
+                rewritten = normalize_length(rewritten, para_text)
 
                 new_result = detect_heuristic_only(rewritten)
                 new_score = new_result["score"]
