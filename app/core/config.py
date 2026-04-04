@@ -34,25 +34,41 @@ SCORE_GREEN = 20
 SCORE_YELLOW = 60
 SCORE_RED = 60  # above this = red
 
-# --- Ensemble weights (with LLM judge) ---
+# --- Ensemble weights (full: LLM judge + linguistic + heuristic) ---
 ENSEMBLE_WEIGHTS = {
-    "llm_judge": 0.35,
-    "burstiness": 0.20,
-    "vocabulary_markers": 0.15,
-    "type_token_ratio": 0.10,
-    "sentence_starters": 0.10,
-    "paragraph_structure": 0.05,
-    "punctuation_diversity": 0.05,
+    "llm_judge": 0.25,
+    # Deep linguistic features
+    "perplexity": 0.15,
+    "coherence": 0.10,
+    "n_gram_uniformity": 0.08,
+    "readability": 0.05,
+    "entropy": 0.05,
+    "repetition": 0.04,
+    # Classic heuristics
+    "burstiness": 0.10,
+    "vocabulary_markers": 0.07,
+    "type_token_ratio": 0.04,
+    "sentence_starters": 0.03,
+    "paragraph_structure": 0.02,
+    "punctuation_diversity": 0.02,
 }
 
-# --- Fallback weights (heuristics only, when LLM judge unavailable) ---
+# --- Fallback weights (no LLM judge — linguistic + heuristic only) ---
 HEURISTIC_WEIGHTS = {
-    "burstiness": 0.22,
-    "vocabulary_markers": 0.25,
-    "type_token_ratio": 0.15,
-    "sentence_starters": 0.15,
-    "paragraph_structure": 0.10,
-    "punctuation_diversity": 0.13,
+    # Deep linguistic features
+    "perplexity": 0.20,
+    "coherence": 0.14,
+    "n_gram_uniformity": 0.10,
+    "readability": 0.06,
+    "entropy": 0.06,
+    "repetition": 0.05,
+    # Classic heuristics
+    "burstiness": 0.14,
+    "vocabulary_markers": 0.10,
+    "type_token_ratio": 0.05,
+    "sentence_starters": 0.04,
+    "paragraph_structure": 0.03,
+    "punctuation_diversity": 0.03,
 }
 
 # --- Paraphrase ---

@@ -4,6 +4,7 @@ import logging
 
 from app.core.config import ENSEMBLE_WEIGHTS, HEURISTIC_WEIGHTS
 from app.detection.heuristics import score_all
+from app.detection.linguistic import score_all_linguistic
 from app.detection.llm_judge import judge
 from app.detection.segment import segment_text
 
@@ -31,7 +32,9 @@ def detect(text: str, use_llm_judge: bool = True, model: str | None = None) -> d
     Returns:
         dict with 'score', 'verdict', 'features', and optionally 'llm_reasoning'.
     """
+    # Heuristic + linguistic features
     features = score_all(text)
+    features.update(score_all_linguistic(text))
 
     llm_result = None
     if use_llm_judge:
@@ -60,8 +63,9 @@ def detect(text: str, use_llm_judge: bool = True, model: str | None = None) -> d
 
 
 def detect_heuristic_only(text: str) -> dict:
-    """Run heuristic-only detection (no LLM call). Fast path."""
+    """Run detection without LLM judge (heuristic + linguistic). Fast path."""
     features = score_all(text)
+    features.update(score_all_linguistic(text))
     total = sum(features.get(k, 0) * w for k, w in HEURISTIC_WEIGHTS.items())
 
     return {

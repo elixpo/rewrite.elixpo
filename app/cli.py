@@ -123,6 +123,14 @@ def cmd_detect(args):
 
         print(f"\n  {c('Feature Breakdown:', 'bold')}\n")
         labels = {
+            # Deep linguistic
+            "perplexity": "Perplexity",
+            "coherence": "Coherence",
+            "n_gram_uniformity": "N-gram Uniformity",
+            "readability": "Readability",
+            "entropy": "Entropy",
+            "repetition": "Repetition",
+            # Heuristic
             "burstiness": "Burstiness",
             "vocabulary_markers": "AI Vocabulary",
             "type_token_ratio": "Lexical Diversity",
@@ -180,6 +188,12 @@ def cmd_paraphrase(args):
 
     print(f"\n  {c('Feature Breakdown:', 'bold')}\n")
     labels = {
+        "perplexity": "Perplexity",
+        "coherence": "Coherence",
+        "n_gram_uniformity": "N-gram Uniformity",
+        "readability": "Readability",
+        "entropy": "Entropy",
+        "repetition": "Repetition",
         "burstiness": "Burstiness",
         "vocabulary_markers": "AI Vocabulary",
         "type_token_ratio": "Lexical Diversity",
