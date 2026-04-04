@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReWrite — AI Detector & Paraphraser</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ReWrite</h1>
+            <p class="subtitle">AI Text Detector & Paraphraser</p>
+            <nav>
+                <button class="tab active" data-tab="detector">Detector</button>
+                <button class="tab" data-tab="paraphraser">Paraphraser</button>
+            </nav>
+        </header>
+
+        <!-- DETECTOR PANEL -->
+        <section id="detector" class="panel active">
+            <textarea id="detect-input" placeholder="Paste text here to analyze for AI-generated content...&#10;&#10;Minimum 50 characters needed." rows="10"></textarea>
+            <button id="detect-btn" class="primary-btn">Analyze Text</button>
+
+            <div id="detect-result" class="result-box hidden">
+                <div class="score-display">
+                    <div class="score-gauge">
+                        <svg viewBox="0 0 120 120">
+                            <circle class="gauge-bg" cx="60" cy="60" r="50" />
+                            <circle id="gauge-fill" class="gauge-fill" cx="60" cy="60" r="50" />
+                        </svg>
+                        <span id="score-value">0%</span>
+                    </div>
+                    <p id="verdict" class="verdict"></p>
+                </div>
+                <div class="features-grid" id="features-grid"></div>
+            </div>
+        </section>
+
+        <!-- PARAPHRASER PANEL -->
+        <section id="paraphraser" class="panel hidden">
+            <textarea id="para-input" placeholder="Paste AI-generated text here to rewrite it...&#10;&#10;The paraphraser will rewrite your text to sound naturally human." rows="10"></textarea>
+
+            <div class="controls">
+                <div class="intensity-select">
+                    <label>Intensity:</label>
+                    <button class="intensity-btn" data-val="light">Light</button>
+                    <button class="intensity-btn active" data-val="medium">Medium</button>
+                    <button class="intensity-btn" data-val="aggressive">Aggressive</button>
+                </div>
+                <button id="para-btn" class="primary-btn">Rewrite Text</button>
+            </div>
+
+            <div id="para-result" class="result-box hidden">
+                <div class="score-comparison">
+                    <div class="score-card before">
+                        <span class="label">Before</span>
+                        <span id="score-before" class="score-num">0%</span>
+                    </div>
+                    <div class="score-arrow">&rarr;</div>
+                    <div class="score-card after">
+                        <span class="label">After</span>
+                        <span id="score-after" class="score-num">0%</span>
+                    </div>
+                    <div class="score-card attempts">
+                        <span class="label">Passes</span>
+                        <span id="score-attempts" class="score-num">1</span>
+                    </div>
+                </div>
+                <div class="output-section">
+                    <div class="output-header">
+                        <h3>Rewritten Text</h3>
+                        <button id="copy-btn" class="copy-btn">Copy</button>
+                    </div>
+                    <div id="para-output" class="para-output"></div>
+                </div>
+                <div class="features-grid" id="para-features-grid"></div>
+            </div>
+        </section>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p id="loading-text">Analyzing...</p>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
