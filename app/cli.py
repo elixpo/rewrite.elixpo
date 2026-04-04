@@ -108,7 +108,12 @@ def cmd_detect(args):
 
         # Generate PDF report if requested
         if getattr(args, "report", None):
-            _generate_report(text, seg_result, args.report)
+            _generate_report(text, args.report, use_llm=use_llm, model=model,
+                           file_path=getattr(args, "file", None))
+    elif getattr(args, "report", None):
+        # Report mode without --segments: go straight to PDF generation
+        _generate_report(text, args.report, use_llm=use_llm, model=model,
+                       file_path=getattr(args, "file", None))
     else:
         result = detect(text, use_llm_judge=use_llm, model=model)
 
@@ -222,17 +227,52 @@ def cmd_paraphrase(args):
         print()
 
 
-def _generate_report(text, seg_result, output_path):
-    """Generate a PDF detection report."""
+def _generate_report(text, output_path, use_llm=True, model=None, file_path=None):
+    """Generate a full Turnitin-style PDF detection report."""
     from app.document.structure import Document
     from app.document.report import generate_report
+    from app.detection.ensemble import detect_segments, detect
+    from app.detection.segment import segment_by_paragraphs
 
-    doc = Document.from_text(text)
+    # Use parsed document if from file, otherwise build from text
+    if file_path:
+        from app.document.parser import parse_file
+        doc = parse_file(file_path)
+        text = doc.text
+    else:
+        doc = Document.from_text(text)
+
+    print(f"  {c('Analyzing document...', 'dim')}")
+
+    # Run overall detection for features
+    overall = detect(text, use_llm_judge=use_llm, model=model)
+
+    # Score each paragraph individually
+    paragraphs = doc.paragraphs
+    seg_scores = []
+    for i, para in enumerate(paragraphs):
+        if len(para.text.strip()) < 30:
+            seg_scores.append({"score": 0, "verdict": "Too short", "text": para.text})
+            continue
+        r = detect(para.text, use_llm_judge=use_llm, model=model)
+        seg_scores.append({
+            "score": r["score"],
+            "verdict": r["verdict"],
+            "text": para.text,
+            "features": r.get("features", {}),
+        })
+        # Progress
+        pct = (i + 1) / len(paragraphs) * 100
+        print(f"\r  Scoring paragraphs... {pct:.0f}% ({i+1}/{len(paragraphs)})", end="", flush=True)
+
+    print()
+
     generate_report(
         document=doc,
-        segment_scores=seg_result["segments"],
-        overall_score=seg_result["overall_score"],
-        overall_verdict=seg_result["overall_verdict"],
+        segment_scores=seg_scores,
+        overall_score=overall["score"],
+        overall_verdict=overall["verdict"],
+        features=overall.get("features", {}),
         output_path=output_path,
     )
     print(c(f"  Report saved to {output_path}", "green"))
