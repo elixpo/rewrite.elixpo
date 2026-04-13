@@ -20,7 +20,7 @@ export interface PlanLimits {
 
 export const PLANS: Record<PlanId, PlanLimits> = {
   guest: {
-    checksPerDay: 3,
+    checksPerDay: 1,
     rewritesPerDay: 0,
     maxWords: 100,
     fileUpload: false,
@@ -30,7 +30,7 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     priorityQueue: false,
   },
   free: {
-    checksPerDay: 15,
+    checksPerDay: 5,
     rewritesPerDay: 3,
     maxWords: 1_000,
     fileUpload: true,

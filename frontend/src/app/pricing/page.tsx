@@ -12,7 +12,7 @@ const plans = [
     period: "",
     description: "Try it out instantly — no sign-up",
     features: [
-      { text: "3 AI checks per day", included: true },
+      { text: "1 AI check per day", included: true },
       { text: "100 word limit", included: true },
       { text: "Per-paragraph scoring", included: true },
       { text: "Paraphrasing", included: false },
@@ -30,10 +30,10 @@ const plans = [
     period: "forever",
     description: "For students who need the full toolkit",
     features: [
-      { text: "15 AI checks per day", included: true },
+      { text: "5 AI checks per day", included: true },
       { text: "3 rewrites per day", included: true },
       { text: "1,000 word limit", included: true },
-      { text: "File upload (PDF, DOCX, .tex)", included: true },
+      { text: "File upload (DOCX, .tex)", included: true },
       { text: "Full PDF detection report", included: true },
       { text: "Session history & resume", included: true },
       { text: "API access", included: false },
@@ -62,7 +62,7 @@ const plans = [
 ];
 
 const comparisonRows = [
-  { label: "AI checks", guest: "3/day", free: "15/day", pro: "Unlimited" },
+  { label: "AI checks", guest: "1/day", free: "5/day", pro: "Unlimited" },
   { label: "Rewrites", guest: "—", free: "3/day", pro: "Unlimited" },
   { label: "Word limit", guest: "100", free: "1,000", pro: "25,000" },
   { label: "File upload", guest: "—", free: "Yes", pro: "Yes" },

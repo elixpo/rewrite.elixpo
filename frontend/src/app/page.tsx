@@ -13,21 +13,21 @@ import {
   streamSession,
   getReportUrl,
   resumeSession,
-  isLoggedIn,
   getGuestUsageToday,
   incrementGuestUsage,
 } from "@/lib/api";
 import type { DetectResult, SessionState, ParagraphProgress } from "@/lib/api";
 import { getLimits } from "@/lib/plans";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function Home() {
+  const { loggedIn } = useAuth();
   const [texContent, setTexContent] = useState("");
   const [domain, setDomain] = useState("general");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loggedIn, setLoggedIn] = useState(false);
 
-  const limits = getLimits(loggedIn, false); // TODO: check pro status
+  const limits = getLimits(loggedIn, false);
   const wordCount = texContent.trim().split(/\s+/).filter(Boolean).length;
 
   // Detection results
@@ -213,12 +213,12 @@ export default function Home() {
               onClick={() => fileRef.current?.click()}
               className="btn-ghost px-3 py-1.5 rounded-lg text-xs"
             >
-              Upload .tex
+              Upload file
             </button>
             <input
               ref={fileRef}
               type="file"
-              accept=".tex,.txt,.md"
+              accept=".tex,.docx"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
