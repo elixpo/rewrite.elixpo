@@ -82,6 +82,12 @@ export default function Home() {
 
   // Check AI score
   const handleCheck = async () => {
+    // Validate .tex format
+    if (!isValidTex) {
+      setError("Please paste a valid LaTeX document. We need at least one \\command or \\begin{environment} to verify it's .tex content.");
+      return;
+    }
+
     // Word limit enforcement
     if (wordCount > limits.maxWords) {
       setError(`Text exceeds ${limits.maxWords.toLocaleString()} word limit. ${loggedIn ? "Upgrade to Pro for 25,000 words." : "Sign in for 1,000 words."}`);
@@ -133,6 +139,10 @@ export default function Home() {
 
   // Start paraphrase
   const handleRewrite = async () => {
+    if (!isValidTex) {
+      setError("Please paste a valid LaTeX document before rewriting.");
+      return;
+    }
     if (!loggedIn) {
       setError("Sign in to use the rewriter.");
       return;
@@ -186,7 +196,8 @@ export default function Home() {
     setError(null);
   };
 
-  const hasContent = texContent.trim().length >= 50;
+  const isValidTex = validateTex(texContent);
+  const hasContent = texContent.trim().length >= 50 && isValidTex;
   const isRunning = sessionState?.status === "running" || sessionState?.status === "pending";
   const isCompleted = sessionState?.status === "completed";
   const isFailed = sessionState?.status === "failed" || sessionState?.status === "interrupted";
