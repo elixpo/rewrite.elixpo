@@ -223,12 +223,12 @@ export default function Home() {
               onClick={() => fileRef.current?.click()}
               className="btn-ghost px-3 py-1.5 rounded-lg text-xs"
             >
-              Upload file
+              Upload .tex
             </button>
             <input
               ref={fileRef}
               type="file"
-              accept=".tex,.docx"
+              accept=".tex"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -239,10 +239,18 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Word count / limit */}
-            <span className={`text-[11px] font-mono ${wordCount > limits.maxWords ? "text-error" : "text-text-subtle"}`}>
-              {wordCount.toLocaleString()}/{limits.maxWords.toLocaleString()} words
-            </span>
+            {/* TeX validity + word count */}
+            {texContent.trim().length > 0 && (
+              <span className={`text-[11px] font-mono flex items-center gap-1.5 ${
+                !isValidTex ? "text-error" : wordCount > limits.maxWords ? "text-error" : "text-text-subtle"
+              }`}>
+                {!isValidTex ? (
+                  <><span className="text-error">✕</span> not valid .tex</>
+                ) : (
+                  <><span className="text-success">✓</span> {wordCount.toLocaleString()}/{limits.maxWords.toLocaleString()} words</>
+                )}
+              </span>
+            )}
 
             {/* Check button */}
             <button
@@ -422,4 +430,41 @@ function formatFeature(key: string): string {
     sentence_starters: "Sentence Starters", llm_judge: "LLM Judge",
   };
   return labels[key] || key;
+}
+
+/**
+ * Validate that content is actual LaTeX, not gibberish or plain spaces.
+ *
+ * Requires at least ONE of:
+ * - A backslash command (\something)
+ * - A begin/end environment (\begin{...})
+ * - \documentclass or \usepackage
+ *
+ * AND the text portion (non-command, non-whitespace) must be >= 30 chars.
+ */
+function validateTex(content: string): boolean {
+  const trimmed = content.trim();
+  if (trimmed.length < 50) return false;
+
+  // Must contain at least one LaTeX command
+  const hasCommand = /\\[a-zA-Z]{2,}/.test(trimmed);
+  if (!hasCommand) return false;
+
+  // Strip LaTeX commands/braces and check remaining text isn't gibberish
+  const textOnly = trimmed
+    .replace(/%.*$/gm, "")                    // strip comments
+    .replace(/\\[a-zA-Z]+\*?\{[^}]*\}/g, "") // strip \cmd{...}
+    .replace(/\\[a-zA-Z]+\*?/g, "")           // strip \cmd
+    .replace(/[{}\[\]$&]/g, "")               // strip braces/math
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Need at least 30 chars of actual readable text
+  if (textOnly.length < 30) return false;
+
+  // Check it's not random gibberish — must have at least some real words (3+ letter sequences)
+  const words = textOnly.match(/[a-zA-Z]{3,}/g) || [];
+  if (words.length < 5) return false;
+
+  return true;
 }

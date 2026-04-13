@@ -33,7 +33,7 @@ const plans = [
       { text: "5 AI checks per day", included: true },
       { text: "3 rewrites per day", included: true },
       { text: "1,000 word limit", included: true },
-      { text: "File upload (DOCX, .tex)", included: true },
+      { text: "File upload (.tex)", included: true },
       { text: "Full PDF detection report", included: true },
       { text: "Session history & resume", included: true },
       { text: "API access", included: false },
