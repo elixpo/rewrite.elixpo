@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { getLimits } from "@/lib/plans";
 import { getPaperSession, updatePaperSession } from "@/lib/paperSession";
 import {
-  detectText,
+  streamDetect,
   startParaphrase,
   setActiveSessionId,
   clearActiveSession,
@@ -19,7 +19,7 @@ import {
   getGuestUsageToday,
   incrementGuestUsage,
 } from "@/lib/api";
-import type { DetectResult, SessionState, ParagraphProgress } from "@/lib/api";
+import type { DetectResult, DetectParagraphEvent, SessionState, ParagraphProgress } from "@/lib/api";
 
 export default function PaperPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
@@ -36,7 +36,11 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
 
   // Detection
   const [detectResult, setDetectResult] = useState<DetectResult | null>(null);
+  const [detectProgress, setDetectProgress] = useState<number>(0);
+  const [detectTotal, setDetectTotal] = useState<number>(0);
+  const [liveSegments, setLiveSegments] = useState<DetectParagraphEvent[]>([]);
   const [paragraphScores, setParagraphScores] = useState<Array<{ startLine: number; score: number }>>([]);
+  const detectCancelRef = useRef<(() => void) | null>(null);
 
   // Sidebar
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -66,8 +70,11 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
     if (mounted) updatePaperSession(slug, { tex: texContent, domain });
   }, [texContent, domain, slug, mounted]);
 
-  // Cleanup SSE on unmount
-  useEffect(() => () => cleanupRef.current?.(), []);
+  // Cleanup on unmount
+  useEffect(() => () => {
+    cleanupRef.current?.();
+    detectCancelRef.current?.();
+  }, []);
 
   const startStreaming = useCallback((sid: string) => {
     cleanupRef.current?.();
@@ -81,7 +88,7 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
 
   // --- Actions ---
 
-  const handleCheck = async () => {
+  const handleCheck = () => {
     if (wordCount > limits.maxWords) {
       setError(`Text exceeds ${limits.maxWords.toLocaleString()} word limit.`);
       return;
@@ -94,36 +101,55 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
       }
     }
 
+    // Cancel any previous detection stream
+    detectCancelRef.current?.();
+
     setLoading(true);
     setError(null);
     setDetectResult(null);
-    try {
-      const result = await detectText(texContent, true);
-      setDetectResult(result);
+    setLiveSegments([]);
+    setDetectProgress(0);
+    setDetectTotal(0);
+    setParagraphScores([]);
+    setSidebarOpen(true);
 
-      if (result.segments) {
-        const scores: Array<{ startLine: number; score: number }> = [];
-        let searchFrom = 0;
-        for (const seg of result.segments) {
-          const snippet = seg.text.slice(0, 40);
-          const lineIdx = texContent.split("\n").findIndex(
-            (line, idx) => idx >= searchFrom && line.includes(snippet.slice(0, 20))
-          );
-          if (lineIdx >= 0) {
-            scores.push({ startLine: lineIdx, score: seg.score });
-            searchFrom = lineIdx + 1;
-          }
+    const texLines = texContent.split("\n");
+
+    detectCancelRef.current = streamDetect(texContent, {
+      onInit: (total) => {
+        setDetectTotal(total);
+      },
+      onParagraph: (data) => {
+        setDetectProgress(data.progress);
+        setLiveSegments((prev) => [...prev, data]);
+
+        // Map this paragraph's score to a line number in the editor
+        const snippet = data.text_preview.slice(0, 30);
+        const lineIdx = texLines.findIndex((line) => line.includes(snippet.slice(0, 20)));
+        if (lineIdx >= 0) {
+          setParagraphScores((prev) => [...prev, { startLine: lineIdx, score: data.score }]);
         }
-        setParagraphScores(scores);
-      }
-
-      if (!loggedIn) incrementGuestUsage();
-      setSidebarOpen(true);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+      },
+      onDone: (data) => {
+        setDetectResult({
+          score: data.overall_score,
+          verdict: data.overall_verdict,
+          features: data.features,
+          segments: data.segments.map((s) => ({
+            index: s.index,
+            text: s.text_preview,
+            score: s.score,
+            verdict: s.verdict,
+          })),
+        });
+        setLoading(false);
+        if (!loggedIn) incrementGuestUsage();
+      },
+      onError: (err) => {
+        setError(err);
+        setLoading(false);
+      },
+    });
   };
 
   const handleRewrite = async () => {
@@ -159,10 +185,14 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
 
   const handleNewSession = () => {
     cleanupRef.current?.();
+    detectCancelRef.current?.();
     clearActiveSession();
     setSessionId(null);
     setSessionState(null);
     setDetectResult(null);
+    setLiveSegments([]);
+    setDetectProgress(0);
+    setDetectTotal(0);
     setParagraphScores([]);
     setError(null);
   };
@@ -253,8 +283,35 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
               </div>
             )}
 
-            {/* Detection results */}
-            {detectResult && !sessionId && (
+            {/* Detection: live streaming progress */}
+            {loading && !sessionId && liveSegments.length > 0 && (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-text-secondary font-display">Analyzing...</h3>
+                  <span className="text-lime text-xs font-mono">{detectProgress.toFixed(0)}%</span>
+                </div>
+                <div>
+                  <div className="flex justify-between text-[11px] mb-1">
+                    <span className="text-text-muted">Paragraphs</span>
+                    <span className="text-text-secondary font-mono">{liveSegments.length}/{detectTotal}</span>
+                  </div>
+                  <div className="progress-track h-1.5">
+                    <div className="progress-fill" style={{ width: `${detectProgress}%` }} />
+                  </div>
+                </div>
+                <div className="space-y-1 max-h-72 overflow-y-auto">
+                  {liveSegments.map((seg) => (
+                    <div key={seg.index} className="flex items-center gap-2 text-[11px] py-1 px-1.5 rounded bg-bg-glass animate-in">
+                      <ScoreBadge score={seg.score} size="sm" />
+                      <p className="text-text-muted leading-snug line-clamp-1 flex-1">{seg.text_preview}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Detection: completed results */}
+            {detectResult && !sessionId && !loading && (
               <>
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-text-secondary font-display">Detection</h3>
@@ -272,7 +329,6 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
                     ))}
                 </div>
 
-                {/* Per-segment list */}
                 {detectResult.segments.length > 0 && (
                   <div className="space-y-1.5 pt-2 border-t border-border-light">
                     <h4 className="text-[10px] text-text-muted uppercase tracking-wider font-semibold">Paragraphs</h4>
