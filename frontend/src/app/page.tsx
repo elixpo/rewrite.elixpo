@@ -92,7 +92,7 @@ export default function Home() {
     if (!loggedIn) {
       const usage = getGuestUsageToday();
       if (usage >= limits.checksPerDay) {
-        setError(`Daily limit reached (${limits.checksPerDay} checks/day). Sign in for ${getLimits(true, false).checksPerDay}/day.`);
+        setError(`Daily limit reached (${limits.checksPerDay} check/day). Sign in for ${getLimits(true, false).checksPerDay}/day.`);
         return;
       }
     }
