@@ -83,8 +83,8 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
     cleanupRef.current = streamSession(
       sid,
       (data) => setSessionState(data),
-      (data) => setSessionState(data),
-      (err) => setError(err),
+      (data) => { setSessionState(data); setLoading(false); },
+      (err) => { setError(err); setLoading(false); },
     );
   }, []);
 
@@ -167,13 +167,14 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
       if (sid) {
         setSessionId(sid);
         setActiveSessionId(sid);
-        // Small delay to let the backend create the Redis session before SSE connects
         await new Promise((r) => setTimeout(r, 500));
         startStreaming(sid);
+        // Don't set loading=false here — SSE callbacks handle it when done/failed
+      } else {
+        setLoading(false);
       }
     } catch (err: any) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };
