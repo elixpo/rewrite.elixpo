@@ -43,8 +43,8 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
   const [paragraphScores, setParagraphScores] = useState<Array<{ startLine: number; score: number }>>([]);
   const detectCancelRef = useRef<(() => void) | null>(null);
 
-  // Sidebar
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Sidebar — closed by default, opens when results arrive
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Session (paraphrase)
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -252,13 +252,15 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
             >
               {loading && sessionId ? "Starting..." : "Rewrite"}
             </button>
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="btn-ghost px-2 py-1 rounded-lg text-xs"
-              title="Toggle results panel"
-            >
-              {sidebarOpen ? "▶" : "◀"}
-            </button>
+            {!sidebarOpen && (detectResult || sessionState) && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="btn-ghost px-2 py-1 rounded-lg text-xs"
+                title="Show results"
+              >
+                ◀ Results
+              </button>
+            )}
           </div>
         </div>
 
@@ -273,66 +275,131 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
         </div>
       </div>
 
-      {/* Results sidebar */}
-      {sidebarOpen && (
-        <div className="w-80 border-l border-border-light bg-[rgba(16,24,12,0.5)] flex flex-col overflow-y-auto shrink-0">
-          <div className="p-4 space-y-4">
-            {/* Error */}
-            {error && (
-              <div className="p-2.5 rounded-lg bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.25)]">
-                <p className="text-error text-xs">{error}</p>
+      {/* Results sidebar — animated slide */}
+      <div
+        className={`border-l border-border-light bg-[rgba(16,24,12,0.5)] flex flex-col overflow-y-auto shrink-0 transition-all duration-300 ease-in-out ${
+          sidebarOpen ? "w-80 opacity-100" : "w-0 opacity-0 border-l-0 overflow-hidden"
+        }`}
+      >
+        <div className="p-4 space-y-4 min-w-[320px]">
+          {/* Sidebar header with download */}
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-text-secondary font-display">
+              {loading && !sessionId ? "Analyzing..." :
+               detectResult && !sessionId ? "Detection" :
+               sessionId ? (isCompleted ? "Rewrite Complete" : isFailed ? "Failed" : "Rewriting...") :
+               "Results"}
+            </h3>
+            <div className="flex items-center gap-1.5">
+              {/* Download button — always visible when there are results */}
+              {detectResult && !sessionId && !loading && (
+                <button
+                  onClick={() => downloadDetectReport(texContent).catch((e) => setError(e.message))}
+                  className="btn-ghost px-2 py-1 rounded-lg text-[10px] flex items-center gap-1"
+                  title="Download PDF report"
+                >
+                  <DownloadIcon />
+                  PDF
+                </button>
+              )}
+              {isCompleted && sessionId && (
+                <a href={getReportUrl(sessionId)} target="_blank" className="btn-ghost px-2 py-1 rounded-lg text-[10px] flex items-center gap-1">
+                  <DownloadIcon />
+                  PDF
+                </a>
+              )}
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="text-text-muted hover:text-text-primary transition-colors p-1"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                  <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="p-2.5 rounded-lg bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.25)]">
+              <p className="text-error text-xs">{error}</p>
+            </div>
+          )}
+
+          {/* Skeleton loading — before first data arrives */}
+          {loading && !sessionId && liveSegments.length === 0 && (
+            <div className="space-y-4 animate-pulse">
+              {/* Score skeleton */}
+              <div className="flex items-center justify-between">
+                <div className="h-4 w-24 bg-bg-glass rounded" />
+                <div className="h-7 w-16 bg-bg-glass rounded-full" />
               </div>
-            )}
+              {/* Feature bars skeleton */}
+              <div className="space-y-2.5">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="h-3 bg-bg-glass rounded" style={{ width: 80 }} />
+                    <div className="flex-1 h-2 bg-bg-glass rounded-full" />
+                    <div className="h-3 w-8 bg-bg-glass rounded" />
+                  </div>
+                ))}
+              </div>
+              {/* Paragraph skeletons */}
+              <div className="pt-2 border-t border-border-light space-y-2">
+                <div className="h-3 w-20 bg-bg-glass rounded" />
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className="h-5 w-12 bg-bg-glass rounded-full" />
+                    <div className="flex-1 h-3 bg-bg-glass rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-            {/* Detection: live streaming progress */}
-            {loading && !sessionId && liveSegments.length > 0 && (
-              <>
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold text-text-secondary font-display">Analyzing...</h3>
-                  <span className="text-lime text-xs font-mono">{detectProgress.toFixed(0)}%</span>
+          {/* Detection: live streaming progress */}
+          {loading && !sessionId && liveSegments.length > 0 && (
+            <>
+              <div>
+                <div className="flex justify-between text-[11px] mb-1">
+                  <span className="text-text-muted">Paragraphs</span>
+                  <span className="text-lime font-mono">{liveSegments.length}/{detectTotal} · {detectProgress.toFixed(0)}%</span>
                 </div>
-                <div>
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-text-muted">Paragraphs</span>
-                    <span className="text-text-secondary font-mono">{liveSegments.length}/{detectTotal}</span>
-                  </div>
-                  <div className="progress-track h-1.5">
-                    <div className="progress-fill" style={{ width: `${detectProgress}%` }} />
-                  </div>
+                <div className="progress-track h-1.5">
+                  <div className="progress-fill" style={{ width: `${detectProgress}%` }} />
                 </div>
-                <div className="space-y-1 max-h-72 overflow-y-auto">
-                  {liveSegments.map((seg) => (
-                    <div key={seg.index} className="flex items-center gap-2 text-[11px] py-1 px-1.5 rounded bg-bg-glass animate-in">
-                      <ScoreBadge score={seg.score} size="sm" />
-                      <p className="text-text-muted leading-snug line-clamp-1 flex-1">{seg.text_preview}</p>
-                    </div>
+              </div>
+              <div className="space-y-1 max-h-[calc(100vh-280px)] overflow-y-auto">
+                {liveSegments.map((seg) => (
+                  <div key={seg.index} className="flex items-center gap-2 text-[11px] py-1.5 px-2 rounded bg-bg-glass">
+                    <ScoreBadge score={seg.score} size="sm" />
+                    <p className="text-text-muted leading-snug line-clamp-1 flex-1">{seg.text_preview}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Detection: completed results */}
+          {detectResult && !sessionId && !loading && (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-text-muted text-[11px]">{detectResult.verdict}</span>
+                <ScoreBadge score={detectResult.score} size="md" />
+              </div>
+              <div className="space-y-1.5">
+                {Object.entries(detectResult.features)
+                  .filter(([, v]) => v > 0)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([key, value]) => (
+                    <ScoreBar key={key} label={formatFeature(key)} score={value} />
                   ))}
-                </div>
-              </>
-            )}
+              </div>
 
-            {/* Detection: completed results */}
-            {detectResult && !sessionId && !loading && (
-              <>
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold text-text-secondary font-display">Detection</h3>
-                  <ScoreBadge score={detectResult.score} size="md" />
-                </div>
-                <p className="text-text-muted text-[11px]">
-                  {detectResult.verdict}
-                </p>
-                <div className="space-y-1.5">
-                  {Object.entries(detectResult.features)
-                    .filter(([, v]) => v > 0)
-                    .sort(([, a], [, b]) => b - a)
-                    .map(([key, value]) => (
-                      <ScoreBar key={key} label={formatFeature(key)} score={value} />
-                    ))}
-                </div>
-
-                {detectResult.segments.length > 0 && (
-                  <div className="space-y-1.5 pt-2 border-t border-border-light">
-                    <h4 className="text-[10px] text-text-muted uppercase tracking-wider font-semibold">Paragraphs</h4>
+              {detectResult.segments.length > 0 && (
+                <div className="space-y-1.5 pt-2 border-t border-border-light">
+                  <h4 className="text-[10px] text-text-muted uppercase tracking-wider font-semibold">Paragraphs</h4>
+                  <div className="max-h-[calc(100vh-420px)] overflow-y-auto space-y-1">
                     {detectResult.segments.map((seg) => (
                       <div key={seg.index} className="flex items-start gap-2 text-xs py-1">
                         <ScoreBadge score={seg.score} size="sm" />
@@ -340,22 +407,21 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
                       </div>
                     ))}
                   </div>
-                )}
-
-                {/* Download report */}
-                <div className="pt-2 border-t border-border-light">
-                  <button
-                    onClick={() => downloadDetectReport(texContent).catch((e) => setError(e.message))}
-                    className="btn-primary w-full py-1.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
-                  >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 2V10M8 10L5 7M8 10L11 7M3 13H13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    Download Detection Report
-                  </button>
                 </div>
-              </>
-            )}
+              )}
+
+              {/* Download report — bottom */}
+              <div className="pt-2 border-t border-border-light">
+                <button
+                  onClick={() => downloadDetectReport(texContent).catch((e) => setError(e.message))}
+                  className="btn-primary w-full py-1.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
+                >
+                  <DownloadIcon />
+                  Download Full Report
+                </button>
+              </div>
+            </>
+          )}
 
             {/* Paraphrase progress */}
             {sessionId && sessionState && (
@@ -466,15 +532,14 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
               </>
             )}
 
-            {/* Empty state */}
-            {!detectResult && !sessionId && !error && (
+            {/* Empty state — only if sidebar opened manually */}
+            {!detectResult && !sessionId && !error && !loading && (
               <div className="text-center py-8">
-                <p className="text-text-subtle text-xs">Click "Check AI %" to analyze this document</p>
+                <p className="text-text-subtle text-xs">Click &ldquo;Check AI %&rdquo; to analyze this document</p>
               </div>
             )}
           </div>
         </div>
-      )}
     </div>
   );
 }
@@ -546,6 +611,14 @@ function ParaRow({ para }: { para: ParagraphProgress }) {
         </p>
       )}
     </div>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+      <path d="M8 2V10M8 10L5 7M8 10L11 7M3 13H13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
   );
 }
 
