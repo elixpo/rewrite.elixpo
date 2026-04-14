@@ -8,6 +8,7 @@ import { ScoreBadge, ScoreBar } from "@/components/ScoreBadge";
 import { useAuth } from "@/lib/AuthContext";
 import { getLimits } from "@/lib/plans";
 import { getPaperSession, updatePaperSession } from "@/lib/paperSession";
+import { showToast } from "@/components/Toast";
 import {
   streamDetect,
   startParaphrase,
@@ -294,7 +295,7 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
               {/* Download button — always visible when there are results */}
               {detectResult && !sessionId && !loading && (
                 <button
-                  onClick={() => downloadDetectReport(texContent).catch((e) => setError(e.message))}
+                  onClick={() => downloadDetectReport(texContent).then(() => showToast("Report downloaded")).catch((e) => { setError(e.message); showToast(e.message, "error"); })}
                   className="btn-ghost px-2 py-1 rounded-lg text-[10px] flex items-center gap-1"
                   title="Download PDF report"
                 >
@@ -413,7 +414,7 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
               {/* Download report — bottom */}
               <div className="pt-2 border-t border-border-light">
                 <button
-                  onClick={() => downloadDetectReport(texContent).catch((e) => setError(e.message))}
+                  onClick={() => downloadDetectReport(texContent).then(() => showToast("Report downloaded")).catch((e) => { setError(e.message); showToast(e.message, "error"); })}
                   className="btn-primary w-full py-1.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
                 >
                   <DownloadIcon />
