@@ -308,7 +308,7 @@ export function streamSession(
       // Retry connection up to 3 times (session may not be in Redis yet)
       let resp: Response | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
-        resp = await fetch(`${API_BASE}/api/session/${sessionId}/stream`, {
+        resp = await fetch(`/api/stream/session/${sessionId}`, {
           signal: controller.signal,
         });
         if (resp.ok && resp.body) break;
