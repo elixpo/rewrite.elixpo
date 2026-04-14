@@ -359,14 +359,15 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
           </div>
         )}
 
-        {/* Editor — fills remaining space */}
-        <div className="flex-1 overflow-auto">
+        {/* Editor — fills remaining space, scroll is inside */}
+        <div className="flex-1 overflow-hidden">
           <TexEditor
             value={reviewMode && rewrittenText ? rewrittenText : texContent}
             onChange={setTexContent}
             readOnly={isRunning || reviewMode}
             paragraphScores={reviewMode ? undefined : paragraphScores}
-            diffs={editorDiffs}
+            diffs={reviewMode ? editorDiffs : undefined}
+            originalValue={reviewMode ? originalBeforeRewrite || undefined : undefined}
             lockMessage={isRunning ? `Rewriting${sessionState?.paragraphs ? ` — ${sessionState.paragraphs.filter(p => p.status === "done").length}/${sessionState.paragraphs.filter(p => p.status !== "skipped").length} paragraphs` : "..."}` : undefined}
           />
         </div>
@@ -466,7 +467,7 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
                   <div className="progress-fill" style={{ width: `${detectProgress}%` }} />
                 </div>
               </div>
-              <div className="space-y-1 max-h-[calc(100vh-280px)] overflow-y-auto">
+              <div className="space-y-1 max-h-[calc(100vh-220px)] overflow-y-auto">
                 {liveSegments.map((seg) => (
                   <div key={seg.index} className="flex items-center gap-2 text-[11px] py-1.5 px-2 rounded bg-bg-glass">
                     <ScoreBadge score={seg.score} size="sm" />
@@ -496,7 +497,7 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
               {detectResult.segments.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-border-light">
                   <h4 className="text-[10px] text-text-muted uppercase tracking-wider font-semibold">Paragraphs</h4>
-                  <div className="max-h-[calc(100vh-420px)] overflow-y-auto space-y-1">
+                  <div className="max-h-[calc(100vh-300px)] overflow-y-auto space-y-1">
                     {detectResult.segments.map((seg) => (
                       <div key={seg.index} className="flex items-start gap-2 text-xs py-1">
                         <ScoreBadge score={seg.score} size="sm" />
@@ -551,7 +552,7 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
 
                 {/* Per-paragraph live feedback */}
                 {sessionState.paragraphs.length > 0 && (
-                  <div className="space-y-1 max-h-[calc(100vh-350px)] overflow-y-auto">
+                  <div className="space-y-1 max-h-[calc(100vh-220px)] overflow-y-auto">
                     {sessionState.paragraphs
                       .filter((p) => p.status !== "skipped" && (p.original_score > 20 || p.status !== "pending"))
                       .map((p) => (
