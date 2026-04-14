@@ -18,6 +18,7 @@ import {
   resumeSession,
   getGuestUsageToday,
   incrementGuestUsage,
+  downloadDetectReport,
 } from "@/lib/api";
 import type { DetectResult, DetectParagraphEvent, SessionState, ParagraphProgress } from "@/lib/api";
 
@@ -340,6 +341,19 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
                     ))}
                   </div>
                 )}
+
+                {/* Download report */}
+                <div className="pt-2 border-t border-border-light">
+                  <button
+                    onClick={() => downloadDetectReport(texContent).catch((e) => setError(e.message))}
+                    className="btn-primary w-full py-1.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                      <path d="M8 2V10M8 10L5 7M8 10L11 7M3 13H13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    Download Detection Report
+                  </button>
+                </div>
               </>
             )}
 
@@ -348,7 +362,7 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
               <>
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-text-secondary font-display">
-                    {isCompleted ? "Complete" : isFailed ? "Failed" : "Rewriting..."}
+                    {isCompleted ? "Rewrite Complete" : isFailed ? "Rewrite Failed" : "Rewriting..."}
                   </h3>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                     isRunning ? "bg-lime-dim text-lime border-lime-border" :
@@ -359,10 +373,11 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
                   </span>
                 </div>
 
+                {/* Progress bar */}
                 {isRunning && (
                   <div>
                     <div className="flex justify-between text-[11px] mb-1">
-                      <span className="text-text-muted">Progress</span>
+                      <span className="text-text-muted">Overall progress</span>
                       <span className="text-lime font-mono">{sessionState.progress.toFixed(0)}%</span>
                     </div>
                     <div className="progress-track h-1.5">
@@ -371,28 +386,62 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
                   </div>
                 )}
 
+                {/* Per-paragraph live feedback */}
                 {sessionState.paragraphs.length > 0 && (
-                  <div className="space-y-0.5 max-h-60 overflow-y-auto">
-                    {sessionState.paragraphs.map((p) => (
+                  <div className="space-y-1 max-h-[calc(100vh-350px)] overflow-y-auto">
+                    {sessionState.paragraphs
+                      .filter((p) => p.original_score > 20 || p.status !== "pending")
+                      .map((p) => (
                       <ParaRow key={p.index} para={p} />
                     ))}
                   </div>
                 )}
 
+                {/* Summary scores */}
                 {isCompleted && sessionState.result && (
-                  <div className="flex items-center gap-4 pt-2 border-t border-border-light">
-                    <div>
-                      <p className="text-text-subtle text-[10px]">Before</p>
-                      <ScoreBadge score={sessionState.result.original_score} size="sm" />
+                  <div className="pt-3 border-t border-border-light space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-center">
+                        <p className="text-text-subtle text-[10px] mb-1">Before</p>
+                        <ScoreBadge score={sessionState.result.original_score} size="md" />
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <span className="text-text-subtle text-lg">→</span>
+                        <span className="text-success text-[10px] font-mono font-semibold">
+                          -{(sessionState.result.original_score - sessionState.result.final_score).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-text-subtle text-[10px] mb-1">After</p>
+                        <ScoreBadge score={sessionState.result.final_score} size="md" />
+                      </div>
                     </div>
-                    <span className="text-text-subtle">→</span>
-                    <div>
-                      <p className="text-text-subtle text-[10px]">After</p>
-                      <ScoreBadge score={sessionState.result.final_score} size="sm" />
+
+                    {/* Stats row */}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-bg-glass rounded-lg p-2">
+                        <p className="text-text-primary text-sm font-bold font-mono">
+                          {sessionState.paragraphs.filter((p) => p.current_score !== null && p.current_score <= 20).length}
+                        </p>
+                        <p className="text-text-subtle text-[10px]">Passed</p>
+                      </div>
+                      <div className="bg-bg-glass rounded-lg p-2">
+                        <p className="text-warning text-sm font-bold font-mono">
+                          {sessionState.paragraphs.filter((p) => p.current_score !== null && p.current_score > 20).length}
+                        </p>
+                        <p className="text-text-subtle text-[10px]">Need review</p>
+                      </div>
+                      <div className="bg-bg-glass rounded-lg p-2">
+                        <p className="text-text-primary text-sm font-bold font-mono">
+                          {sessionState.paragraphs.length}
+                        </p>
+                        <p className="text-text-subtle text-[10px]">Total</p>
+                      </div>
                     </div>
                   </div>
                 )}
 
+                {/* Actions */}
                 <div className="flex flex-wrap gap-2 pt-1">
                   {isFailed && (
                     <button onClick={handleResume} className="btn-primary px-3 py-1 rounded-lg text-xs">Resume</button>
@@ -400,13 +449,13 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
                   {isCompleted && (
                     <>
                       <a href={getReportUrl(sessionId)} target="_blank" className="btn-primary px-3 py-1 rounded-lg text-xs inline-block">
-                        Report
+                        Report PDF
                       </a>
                       <button
                         onClick={() => sessionState.result?.rewritten && navigator.clipboard.writeText(sessionState.result.rewritten)}
                         className="btn-ghost px-3 py-1 rounded-lg text-xs"
                       >
-                        Copy
+                        Copy text
                       </button>
                     </>
                   )}
@@ -431,22 +480,70 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
 }
 
 function ParaRow({ para }: { para: ParagraphProgress }) {
-  const icon = para.status === "rewriting" ? "◎" : para.status === "done" ? "●" : para.status === "failed" ? "✕" : "○";
-  const color = para.status === "rewriting" ? "text-lime animate-pulse" : para.status === "done" ? "text-success" : para.status === "failed" ? "text-error" : "text-text-subtle";
+  const isActive = para.status === "rewriting";
+  const isDone = para.status === "done";
+  const isFailed = para.status === "failed";
+  const reduction = para.reduction || 0;
+  const scoreColor = (s: number) => s >= 60 ? "text-error" : s >= 20 ? "text-warning" : "text-success";
+
   return (
-    <div className="flex items-center gap-2 text-[11px] py-1 px-1.5 rounded hover:bg-bg-glass">
-      <span className={`w-3 text-center ${color}`}>{icon}</span>
-      <span className="text-text-subtle w-5 font-mono">#{para.index + 1}</span>
-      <span className={`font-mono w-8 text-right ${para.original_score >= 60 ? "text-error" : para.original_score >= 20 ? "text-warning" : "text-success"}`}>
-        {para.original_score.toFixed(0)}%
-      </span>
-      {para.current_score !== null && (
-        <>
-          <span className="text-text-subtle">→</span>
-          <span className={`font-mono w-8 text-right ${para.current_score >= 60 ? "text-error" : para.current_score >= 20 ? "text-warning" : "text-success"}`}>
-            {para.current_score.toFixed(0)}%
+    <div className={`rounded-lg px-2.5 py-2 transition-all ${
+      isActive ? "bg-lime-dim border border-lime-border" :
+      isDone ? "bg-bg-glass" :
+      "hover:bg-bg-glass"
+    }`}>
+      {/* Top row: index + scores */}
+      <div className="flex items-center gap-2 text-[11px]">
+        <span className={`w-3 text-center ${
+          isActive ? "text-lime animate-pulse" : isDone ? "text-success" : isFailed ? "text-error" : "text-text-subtle"
+        }`}>
+          {isActive ? "◎" : isDone ? "●" : isFailed ? "✕" : "○"}
+        </span>
+        <span className="text-text-subtle font-mono">¶{para.index + 1}</span>
+
+        <span className={`font-mono ${scoreColor(para.original_score)}`}>
+          {para.original_score.toFixed(0)}%
+        </span>
+
+        {para.current_score !== null && (
+          <>
+            <span className="text-text-subtle">→</span>
+            <span className={`font-mono font-semibold ${scoreColor(para.current_score)}`}>
+              {para.current_score.toFixed(0)}%
+            </span>
+          </>
+        )}
+
+        {/* Reduction badge */}
+        {isDone && reduction > 0 && (
+          <span className="ml-auto text-[10px] font-mono text-success">
+            ↓{reduction.toFixed(0)}%
           </span>
-        </>
+        )}
+        {isDone && reduction <= 0 && para.current_score !== null && para.current_score > 20 && (
+          <span className="ml-auto text-[10px] font-mono text-warning">
+            needs review
+          </span>
+        )}
+      </div>
+
+      {/* Active: show attempt counter */}
+      {isActive && para.attempts !== undefined && (
+        <div className="mt-1.5 flex items-center gap-2">
+          <div className="flex-1 progress-track h-1">
+            <div className="progress-fill" style={{ width: `${((para.attempts || 0) / (para.max_attempts || 5)) * 100}%` }} />
+          </div>
+          <span className="text-[10px] text-lime font-mono">
+            attempt {para.attempts}/{para.max_attempts || 5}
+          </span>
+        </div>
+      )}
+
+      {/* Preview text */}
+      {para.text_preview && isActive && (
+        <p className="text-[10px] text-text-subtle mt-1 line-clamp-1 leading-snug">
+          {para.text_preview}
+        </p>
       )}
     </div>
   );

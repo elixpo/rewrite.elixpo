@@ -68,6 +68,10 @@ def _run_paraphrase(session_id: str):
                 "original_score": round(score_result["score"], 1),
                 "current_score": None,
                 "status": "pending",
+                "attempts": 0,
+                "max_attempts": 0,
+                "reduction": 0,
+                "text_preview": para[:80],
             })
         rewritten_paragraphs = list(paragraphs)
 
@@ -105,6 +109,7 @@ def _run_paraphrase(session_id: str):
 
         # Mark as rewriting + persist
         para_progress[para_idx]["status"] = "rewriting"
+        para_progress[para_idx]["max_attempts"] = max_attempts
         completed_count = sum(1 for p in para_progress if p["status"] == "done")
         progress_pct = (completed_count / total_steps) * 100
         session["paragraphs"] = para_progress
@@ -124,6 +129,13 @@ def _run_paraphrase(session_id: str):
 
         for attempt in range(max_attempts):
             temp = temp_schedule[min(attempt, len(temp_schedule) - 1)]
+
+            # Update attempt count live
+            para_progress[para_idx]["attempts"] = attempt + 1
+            para_progress[para_idx]["current_score"] = round(best_score, 1)
+            para_progress[para_idx]["reduction"] = round(original_score - best_score, 1)
+            session["paragraphs"] = para_progress
+            save_session(session_id, session)
 
             try:
                 source = best_text if attempt > 0 else para_text
@@ -145,6 +157,12 @@ def _run_paraphrase(session_id: str):
                 if new_score < best_score:
                     best_text = rewritten
                     best_score = new_score
+
+                # Update live score after each attempt
+                para_progress[para_idx]["current_score"] = round(best_score, 1)
+                para_progress[para_idx]["reduction"] = round(original_score - best_score, 1)
+                session["paragraphs"] = para_progress
+                save_session(session_id, session)
 
                 if best_score <= threshold:
                     break

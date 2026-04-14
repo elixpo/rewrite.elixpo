@@ -4,7 +4,8 @@
  * Session IDs are stored in localStorage so they survive reloads.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Empty string = same origin. All /api/* calls go through Next.js rewrites proxy.
+const API_BASE = "";
 
 // --- User ID (anonymous, persisted in localStorage) ---
 
@@ -235,6 +236,10 @@ export interface ParagraphProgress {
   original_score: number;
   current_score: number | null;
   status: string;
+  attempts?: number;
+  max_attempts?: number;
+  reduction?: number;
+  text_preview?: string;
 }
 
 export interface SessionState {
@@ -270,6 +275,22 @@ export async function resumeSession(sessionId: string): Promise<any> {
 
 export function getReportUrl(sessionId: string): string {
   return `${API_BASE}/api/session/${sessionId}/report`;
+}
+
+export async function downloadDetectReport(text: string): Promise<void> {
+  const resp = await fetch(`${API_BASE}/api/detect/report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!resp.ok) throw new Error("Report generation failed");
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "rewrite_detection_report.pdf";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // --- SSE streaming ---
