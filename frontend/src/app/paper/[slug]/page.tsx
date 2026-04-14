@@ -83,7 +83,14 @@ export default function PaperPage({ params }: { params: Promise<{ slug: string }
     cleanupRef.current = streamSession(
       sid,
       (data) => setSessionState(data),
-      (data) => { setSessionState(data); setLoading(false); },
+      (data) => {
+        setSessionState(data);
+        setLoading(false);
+        // Apply rewritten text to the editor
+        if (data.result?.rewritten) {
+          setTexContent(data.result.rewritten);
+        }
+      },
       (err) => { setError(err); setLoading(false); },
     );
   }, []);
