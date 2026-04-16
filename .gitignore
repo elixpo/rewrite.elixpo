@@ -2,4 +2,14 @@ venv/
 __pycache__/
 *.pyc
 .env
+.env.local
+.dev.vars
 nltk_data/
+wrangler.toml
+.next/
+output/
+dist/
+build/
+*.egg-info/
+node_modules/
+.wrangler/
